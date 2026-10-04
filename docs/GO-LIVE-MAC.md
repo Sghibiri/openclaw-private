@@ -114,17 +114,16 @@ Expect `tinfoil: verified` with a measurement under Attestations, one boundary c
 
 ## 6. Updating
 
-OpenClaw updates itself the normal way, and the pack updates from npm on each gateway:
+OpenClaw updates itself the normal way. Update the pack on the main gateway, then run the setup again: it installs the same version on the private gateway, keeps your key, tokens and config, and restarts both.
 
 ```sh
 openclaw update
 openclaw plugins update openclaw-private
-openclaw --profile private plugins update openclaw-private
-openclaw --profile private plugins update openclaw-private-tinfoil     # or openclaw-private-privatemode
-openclaw gateway restart && openclaw --profile private gateway restart
+openclaw privacy setup
 openclaw --profile private plugins list      # privacy-core and tinfoil must be loaded
-openclaw --profile private privacy status
 ```
+
+Do not run `openclaw --profile private plugins update` directly: the private gateway sends every download, npm's included, to its privacy proxy, which does not allow npm. The setup pauses the proxy for the install and turns it back on.
 
 ## 7. If something refuses
 
@@ -168,11 +167,12 @@ printf 'A2A_INBOX_INBOUND=%s\nA2A_INBOX_OUTBOUND=%s\nOPENCLAW_PRIVATE_GATEWAY_TO
 chmod 600 ~/.openclaw/.env ~/.openclaw-private/.env
 ```
 
-Write `~/.openclaw-private/openclaw.json` from the private-gateway block in [AGENTS-EXAMPLE](AGENTS-EXAMPLE.md) (EU: [AGENTS-EXAMPLE-EU](AGENTS-EXAMPLE-EU.md)), merge the main-gateway door block into `~/.openclaw/openclaw.json`, then:
+Write `~/.openclaw-private/openclaw.json` from the private-gateway block in [AGENTS-EXAMPLE](AGENTS-EXAMPLE.md) (EU: [AGENTS-EXAMPLE-EU](AGENTS-EXAMPLE-EU.md)), merge the main-gateway door block into `~/.openclaw/openclaw.json`. In the private file, set `"enabled": false` inside `proxy` for now: the private profile sends npm's downloads to the privacy proxy, which is not running yet. Then:
 
 ```sh
 openclaw --profile private plugins install openclaw-private
 openclaw --profile private plugins install openclaw-private-tinfoil
+# now remove "enabled": false from proxy in ~/.openclaw-private/openclaw.json
 openclaw --profile private gateway install --port 19789
 openclaw gateway restart
 openclaw --profile private privacy status

@@ -1,6 +1,6 @@
 {
   "name": "openclaw-private",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenClaw Private: keeps private agents on attested or local models, allowlists their internet access, approves actions and skills",
   "license": "MIT",
   "type": "module",

@@ -34,50 +34,174 @@ type SetupOptions = {
   lite?: boolean;
 };
 
-function runProcess(
+export function runProcess(
   command: string,
   args: string[],
-  options: { input?: string; env: Record<string, string | undefined> },
+  options: { input?: string; env: Record<string, string | undefined>; timeoutMs?: number },
 ): Promise<RunResult> {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       stdio: ["pipe", "pipe", "pipe"],
       env: options.env as NodeJS.ProcessEnv,
+      // Its own process group, so a time limit also stops what it started (npm).
+      detached: options.timeoutMs !== undefined,
     });
     let stdout = "";
     let stderr = "";
+    let timedOut = false;
+    const timer =
+      options.timeoutMs === undefined
+        ? undefined
+        : setTimeout(() => {
+            timedOut = true;
+            try {
+              process.kill(-(child.pid ?? 0), "SIGTERM");
+            } catch {
+              child.kill("SIGTERM");
+            }
+          }, options.timeoutMs);
     child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString("utf8")));
     child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString("utf8")));
-    child.on("error", (error) => resolve({ code: 127, stdout, stderr: error.message }));
-    child.on("close", (code) => resolve({ code: code ?? 1, stdout, stderr }));
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      resolve({ code: 127, stdout, stderr: error.message });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (timedOut) {
+        const ms = options.timeoutMs ?? 0;
+        const limit =
+          ms >= 60_000 ? `${Math.round(ms / 60_000)} minutes` : `${Math.round(ms / 1000)} seconds`;
+        // What it printed last is what it was waiting on.
+        resolve({
+          code: 124,
+          stdout,
+          stderr: `no result after ${limit}, so it was stopped. Its last output: ${stderr.trim().split("\n").slice(-2).join(" / ") || stdout.trim().split("\n").slice(-2).join(" / ") || "(none)"}. Check the internet connection (curl -I https://registry.npmjs.org), then run setup again.`,
+        });
+        return;
+      }
+      resolve({ code: code ?? 1, stdout, stderr });
+    });
     child.stdin.end(options.input ?? "");
   });
 }
 
-async function ask(question: string, hidden = false): Promise<string> {
-  const { createInterface } = await import("node:readline/promises");
-  const { Writable } = await import("node:stream");
-  let muted = false;
-  const output = new Writable({
-    write(chunk, _encoding, done) {
-      if (!muted) {
-        process.stdout.write(chunk);
-      }
-      done();
-    },
-  });
-  const rl = createInterface({ input: process.stdin, output, terminal: true });
-  try {
-    const pending = rl.question(question);
-    muted = hidden;
-    const answer = await pending;
-    if (hidden) {
-      process.stdout.write("\n");
+/**
+ * One chunk of typed or pasted input for a hidden prompt: what to keep, and
+ * what to echo (a star per character, so a paste visibly arrived).
+ */
+export function hiddenInputStep(
+  value: string,
+  chunk: string,
+): { value: string; echo: string; done: boolean; cancelled: boolean } {
+  let echo = "";
+  // Terminals wrap a paste in bracketed-paste markers; they are not part of the key.
+  const text = chunk.replace(/\u001b\[20[01]~/gu, "");
+  for (const char of text) {
+    if (char === "\r" || char === "\n") {
+      return { value, echo, done: true, cancelled: false };
     }
-    return answer.trim();
+    if (char === "\u0003") {
+      return { value, echo, done: true, cancelled: true };
+    }
+    if (char === "\u007f" || char === "\b") {
+      if (value.length > 0) {
+        value = value.slice(0, -1);
+        echo += "\b \b";
+      }
+      continue;
+    }
+    if (char < " ") {
+      continue;
+    }
+    value += char;
+    echo += "*";
+  }
+  return { value, echo, done: false, cancelled: false };
+}
+
+function askHidden(question: string): Promise<string> {
+  const stdin = process.stdin;
+  process.stdout.write(question);
+  return new Promise((resolve, reject) => {
+    let value = "";
+    const finish = (error?: Error) => {
+      stdin.off("data", onData);
+      stdin.setRawMode(false);
+      stdin.pause();
+      process.stdout.write("\n");
+      if (error) {
+        reject(error);
+      } else {
+        resolve(value.trim());
+      }
+    };
+    const onData = (data: Buffer) => {
+      const step = hiddenInputStep(value, data.toString("utf8"));
+      value = step.value;
+      process.stdout.write(step.echo);
+      if (step.done) {
+        finish(step.cancelled ? new Error("Cancelled; nothing was changed.") : undefined);
+      }
+    };
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.on("data", onData);
+  });
+}
+
+async function ask(question: string, hidden = false): Promise<string> {
+  if (hidden && process.stdin.isTTY) {
+    return askHidden(question);
+  }
+  const { createInterface } = await import("node:readline/promises");
+  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+  try {
+    return (await rl.question(question)).trim();
   } finally {
     rl.close();
   }
+}
+
+const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+/**
+ * A one-line spinner with elapsed seconds for the step that is running, so
+ * a slow download never looks frozen. Lines logged meanwhile print above it.
+ */
+function createSpinner(write: (text: string) => void) {
+  let line: string | undefined;
+  let timer: ReturnType<typeof setInterval> | undefined;
+  const clear = () => {
+    if (line !== undefined) {
+      write("\r\u001b[2K");
+    }
+  };
+  return {
+    start(label: string): () => void {
+      const started = Date.now();
+      let frame = 0;
+      const draw = () => {
+        const seconds = Math.floor((Date.now() - started) / 1000);
+        line = `  ${SPINNER[frame++ % SPINNER.length]}  ${label}${seconds >= 2 ? ` (${seconds}s)` : ""}`;
+        write(`\r\u001b[2K${line}`);
+      };
+      draw();
+      timer = setInterval(draw, 100);
+      return () => {
+        clearInterval(timer);
+        clear();
+        line = undefined;
+      };
+    },
+    log(text: string, print: (text: string) => void) {
+      clear();
+      print(text);
+      if (line !== undefined) {
+        write(line);
+      }
+    },
+  };
 }
 
 function describe(step: SetupStep): string {
@@ -92,8 +216,12 @@ function describe(step: SetupStep): string {
       return `set the door tokens in the ${step.profile} gateway's .env (${step.names.join(", ")}); existing ones are kept`;
     case "write-private-config":
       return "write the private gateway's config (one Inbox agent behind the door)";
+    case "pause-egress-proxy":
+      return "pause the private gateway's egress proxy so its plugins can download";
     case "install-plugin":
       return `install ${step.spec} on the private gateway`;
+    case "resume-egress-proxy":
+      return "turn the egress proxy back on";
     case "update-main-config":
       return "connect your main gateway to the private one (the door)";
     case "install-private-service":
@@ -161,11 +289,13 @@ export async function runPrivacySetup(
       return false;
     }
     log(template.keyHelp);
+    log("Paste it once and press Enter; each character shows as *.");
     providerKey = await ask(`Paste your ${template.keyName} (hidden): `, true);
     if (!providerKey) {
       log("No key given; nothing was changed.");
       return false;
     }
+    log(`Key received (${providerKey.length} characters).`);
   }
   const port = opts.port ? Number(opts.port) : DEFAULT_PRIVATE_PORT;
   if (!Number.isInteger(port) || port < 1024 || port > 65535) {
@@ -203,7 +333,14 @@ export async function runPrivacySetup(
   log("");
   // The same home OpenClaw resolves profiles under (OPENCLAW_HOME, then the OS home).
   const privateStateDir = path.join(resolveRequiredHomeDir(), `.openclaw-${PRIVATE_PROFILE}`);
+  const spinner = terminal ? createSpinner((text) => process.stdout.write(text)) : undefined;
   const deps: SetupDeps = {
+    ...(spinner
+      ? {
+          progress: (step: SetupStep, index: number, total: number) =>
+            spinner.start(`[${index}/${total}] ${describe(step)}`),
+        }
+      : {}),
     run: runProcess,
     openclaw: { command: process.execPath, args: process.argv[1] ? [process.argv[1]] : [] },
     env: { ...process.env },
@@ -250,7 +387,7 @@ export async function runPrivacySetup(
     },
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     randomToken: () => randomBytes(32).toString("hex"),
-    log,
+    log: spinner ? (line) => spinner.log(line, log) : log,
   };
   const outcome = await runSetup({
     steps,

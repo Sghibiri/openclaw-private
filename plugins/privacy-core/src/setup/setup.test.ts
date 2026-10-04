@@ -13,7 +13,14 @@ import {
   type PrivateProvider,
   type SetupAnswers,
 } from "./plan.js";
-import { mergeEnv, readEnvValues, runSetup, type RunResult, type SetupDeps } from "./run.js";
+import {
+  mergeEnv,
+  npmFailureSummary,
+  readEnvValues,
+  runSetup,
+  type RunResult,
+  type SetupDeps,
+} from "./run.js";
 
 const answers = (
   provider: PrivateProvider = "tinfoil",
@@ -349,6 +356,45 @@ describe("privacy setup run", () => {
     expect(replaced.renames[0]).toMatch(/openclaw\.json -> .*openclaw\.json\.before-setup-\d+$/u);
   });
 
+  it("installs plugins with the private egress proxy paused, then turns it back on", async () => {
+    const config = "/home/u/.openclaw-private/openclaw.json";
+    for (const existing of [false, true]) {
+      const fake = fakeDeps({
+        imageBuilt: true,
+        ...(existing ? { files: { [config]: JSON.stringify(buildPrivateConfig(answers())) } } : {}),
+      });
+      const proxyDuringInstall: unknown[] = [];
+      const run = fake.deps.run;
+      fake.deps.run = async (command, args, options) => {
+        if (args.includes("plugins") && args.includes("install")) {
+          proxyDuringInstall.push(JSON.parse(fake.files.get(config) ?? "{}").proxy);
+        }
+        return run(command, args, options);
+      };
+      const outcome = await runSetup({
+        steps: planSetup(answers()),
+        answers: answers(),
+        providerKey: "k",
+        deps: fake.deps,
+      });
+      expect(outcome).toMatchObject({ ok: true });
+      expect(proxyDuringInstall).toEqual([
+        { proxyUrl: "http://127.0.0.1:19930", enabled: false },
+        { proxyUrl: "http://127.0.0.1:19930", enabled: false },
+      ]);
+      expect(JSON.parse(fake.files.get(config) ?? "{}").proxy).toEqual({
+        proxyUrl: "http://127.0.0.1:19930",
+      });
+    }
+    // While paused, the privacy rules refuse private agent runs.
+    const paused = buildPrivateConfig(answers()) as HostConfig;
+    paused.proxy = { ...paused.proxy, enabled: false };
+    const settings = resolvePrivacySettings(paused.plugins?.entries?.["privacy-core"]?.config);
+    expect(validatePrivacyConfig(paused, settings).map((issue) => issue.path)).toContain(
+      "proxy.proxyUrl",
+    );
+  });
+
   it("runs without Docker in lite mode and will not silently swap modes", async () => {
     const lite = fakeDeps({ docker: false });
     const outcome = await run(lite, {
@@ -374,6 +420,70 @@ describe("privacy setup run", () => {
     expect(await run(toFull, { overwrite: true })).toMatchObject({ ok: true });
   });
 
+  it("retries a failed plugin install once and then shows what npm said", async () => {
+    const npmOutput = [
+      "npm error code ECONNRESET",
+      "npm error syscall read",
+      "npm error errno ECONNRESET",
+      "npm error network request to https://registry.npmjs.org/openclaw-private-tinfoil failed, reason: read ECONNRESET",
+      "npm error network This is a problem related to network connectivity.",
+      "npm error If you are behind a proxy, please make sure that the 'proxy' config is set properly.",
+      "npm error A complete log of this run can be found in: /Users/u/.npm/_logs/x-debug-0.log",
+    ].join("\n");
+    expect(npmFailureSummary(npmOutput)).toBe(
+      "npm error code ECONNRESET / npm error syscall read / npm error errno ECONNRESET / npm error network request to https://registry.npmjs.org/openclaw-private-tinfoil failed, reason: read ECONNRESET / npm error A complete log of this run can be found in: /Users/u/.npm/_logs/x-debug-0.log",
+    );
+    for (const failures of [1, 2]) {
+      const fake = fakeDeps({ imageBuilt: true });
+      let left = failures;
+      const run = fake.deps.run;
+      fake.deps.run = async (command, args, options) => {
+        if (args.includes("install") && args.some((arg) => arg.includes("tinfoil")) && left > 0) {
+          left -= 1;
+          return { code: 1, stdout: "", stderr: npmOutput };
+        }
+        return run(command, args, options);
+      };
+      const outcome = await runSetup({
+        steps: planSetup(answers()),
+        answers: answers(),
+        providerKey: "k",
+        deps: fake.deps,
+      });
+      if (failures === 1) {
+        expect(outcome).toMatchObject({ ok: true });
+      } else {
+        expect(outcome).toMatchObject({ ok: false, step: "install-plugin" });
+        expect(outcome.ok === false && outcome.message).toContain("ECONNRESET");
+      }
+    }
+  });
+
+  it("gives a stuck install a time limit and does not retry it", async () => {
+    const fake = fakeDeps({ imageBuilt: true });
+    const timeouts: Array<number | undefined> = [];
+    let installs = 0;
+    const run = fake.deps.run;
+    fake.deps.run = async (command, args, options) => {
+      if (args.includes("install") && args.includes("plugins")) {
+        timeouts.push(options.timeoutMs);
+        installs += 1;
+        return { code: 124, stdout: "", stderr: "no result after 5 minutes, so it was stopped." };
+      }
+      return run(command, args, options);
+    };
+    const outcome = await runSetup({
+      steps: planSetup(answers()),
+      answers: answers(),
+      providerKey: "k",
+      deps: fake.deps,
+    });
+    expect(outcome).toMatchObject({ ok: false, step: "install-plugin" });
+    expect(outcome.ok === false && outcome.message).toContain("no result after 5 minutes");
+    expect(installs).toBe(1);
+    expect(timeouts).toEqual([5 * 60_000]);
+  });
+
   it("does not claim success it cannot back", async () => {
     const restartFails = fakeDeps({ imageBuilt: true, mainRestart: 1 });
     const outcome = await run(restartFails);
@@ -397,5 +507,30 @@ describe("privacy setup run", () => {
 
     const refused = fakeDeps({ imageBuilt: true, doorStatuses: [0, 0, 401] });
     expect(await run(refused)).toMatchObject({ ok: false, step: "check-door" });
+  });
+});
+
+describe("hidden key prompt", () => {
+  it("shows a star per character, drops paste markers, handles backspace, Enter and Ctrl+C", async () => {
+    const { hiddenInputStep } = await import("./cli.js");
+    const pasted = hiddenInputStep("", "\u001b[200~tk_abc123\u001b[201~");
+    expect(pasted).toEqual({
+      value: "tk_abc123",
+      echo: "*********",
+      done: false,
+      cancelled: false,
+    });
+    expect(hiddenInputStep("tk_abc123", "\u007f")).toMatchObject({
+      value: "tk_abc12",
+      echo: "\b \b",
+    });
+    expect(hiddenInputStep("", "\u007f")).toMatchObject({ value: "", echo: "" });
+    expect(hiddenInputStep("tk", "x\r")).toEqual({
+      value: "tkx",
+      echo: "*",
+      done: true,
+      cancelled: false,
+    });
+    expect(hiddenInputStep("tk", "\u0003")).toMatchObject({ done: true, cancelled: true });
   });
 });

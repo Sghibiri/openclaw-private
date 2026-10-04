@@ -24,7 +24,8 @@ export type SetupDeps = {
   run: (
     command: string,
     args: string[],
-    options: { input?: string; env: Env },
+    /** `timeoutMs`: stop the command and answer code 124 once it runs this long. */
+    options: { input?: string; env: Env; timeoutMs?: number },
   ) => Promise<RunResult>;
   /** How to start this same OpenClaw CLI (node plus its entry script). */
   openclaw: { command: string; args: string[] };
@@ -44,6 +45,11 @@ export type SetupDeps = {
   probeDoor: (url: string, token: string) => Promise<number>;
   sleep: (ms: number) => Promise<void>;
   randomToken: () => string;
+  /**
+   * Shows that a step is running (a spinner in a terminal). Returns a
+   * function that clears it when the step ends.
+   */
+  progress?: (step: SetupStep, index: number, total: number) => () => void;
   log: (line: string) => void;
 };
 
@@ -57,6 +63,29 @@ const TOKEN_NAMES = [DOOR_TOKENS.inbound, DOOR_TOKENS.outbound, PRIVATE_GATEWAY_
 
 function lastLines(text: string, count = 3): string {
   return text.trim().split("\n").slice(-count).join(" / ");
+}
+
+/**
+ * The lines of an npm failure that say what went wrong (code, errno, the
+ * request that failed), which npm prints first; the last lines are only
+ * generic advice and the log path.
+ */
+/** A plugin install normally takes under a minute; past this it is stuck. */
+export const INSTALL_TIMEOUT_MS = 5 * 60_000;
+
+export function npmFailureSummary(text: string): string {
+  const lines = text
+    .replace(/\u001b\[[0-9;]*m/gu, "")
+    .split("\n")
+    .map((line) => line.trim());
+  const telling = lines.filter((line) =>
+    /npm error (?:code|errno|syscall|network|request to|notarget|404|403|401)|\b(?:E[A-Z]{3,}|ETARGET|E40\d)\b/u.test(
+      line,
+    ),
+  );
+  const log = lines.find((line) => /complete log of this run/u.test(line));
+  const picked = [...new Set([...telling.slice(0, 4), ...(log ? [log] : [])])];
+  return picked.length > 0 ? picked.join(" / ") : lastLines(text);
 }
 
 const envLine = (name: string) => new RegExp(`^\\s*(?:export\\s+)?${name}=`, "u");
@@ -160,7 +189,12 @@ export async function runSetup(params: {
     }
   }
 
-  const openclaw = (profile: "main" | "private", args: string[], input?: string) =>
+  const openclaw = (
+    profile: "main" | "private",
+    args: string[],
+    input?: string,
+    timeoutMs?: number,
+  ) =>
     deps.run(
       deps.openclaw.command,
       [
@@ -170,6 +204,7 @@ export async function runSetup(params: {
       ],
       {
         ...(input !== undefined ? { input } : {}),
+        ...(timeoutMs !== undefined ? { timeoutMs } : {}),
         env: profile === "private" ? privateEnvVars : scrubbed,
       },
     );
@@ -179,6 +214,25 @@ export async function runSetup(params: {
   const warn = (line: string) => {
     warnings.push(line);
     deps.log(`  !!  ${line}`);
+  };
+
+  // `openclaw plugins install` rewrites this file too, so only `proxy.enabled` is touched.
+  const setPrivateProxyEnabled = async (enabled: boolean) => {
+    let config: { proxy?: { enabled?: boolean } & Record<string, unknown> };
+    try {
+      config = JSON.parse((await deps.readFile(privateConfigPath)) ?? "") as typeof config;
+    } catch {
+      throw new StepFailed(
+        `${privateConfigPath} is missing or not plain JSON. Run again with --overwrite to replace it (a backup is kept).`,
+      );
+    }
+    const proxy = (config.proxy ??= {});
+    if (enabled) {
+      delete proxy.enabled;
+    } else {
+      proxy.enabled = false;
+    }
+    await deps.writeFileAtomic(privateConfigPath, `${JSON.stringify(config, null, 2)}\n`);
   };
 
   const steps: Record<SetupStep["kind"], (step: never) => Promise<void>> = {
@@ -266,17 +320,33 @@ export async function runSetup(params: {
       );
       ok(`wrote the private gateway config ${privateConfigPath}`);
     },
+    "pause-egress-proxy": async () => {
+      await setPrivateProxyEnabled(false);
+      ok("paused the private gateway's egress proxy while its plugins download");
+    },
+    "resume-egress-proxy": async () => {
+      await setPrivateProxyEnabled(true);
+      ok("turned the private gateway's egress proxy back on");
+    },
     "install-plugin": async (step: Extract<SetupStep, { kind: "install-plugin" }>) => {
-      const result = await openclaw("private", [
-        "plugins",
-        "install",
-        step.spec,
-        "--force",
-        "--accept-capabilities",
-      ]);
+      const install = () =>
+        openclaw(
+          "private",
+          ["plugins", "install", step.spec, "--force", "--accept-capabilities"],
+          undefined,
+          INSTALL_TIMEOUT_MS,
+        );
+      let result = await install();
+      // npm downloads fail now and then on a flaky network; one more try is cheap.
+      // A hang is not retried: a second one would double the wait.
+      if (result.code !== 0 && result.code !== 124) {
+        deps.log(`  ..  installing ${step.spec} failed, trying once more`);
+        await deps.sleep(5000);
+        result = await install();
+      }
       if (result.code !== 0) {
         throw new StepFailed(
-          `Installing ${step.spec} on the private gateway failed: ${lastLines(result.stderr || result.stdout)}`,
+          `Installing ${step.spec} on the private gateway failed: ${result.code === 124 ? result.stderr : npmFailureSummary(`${result.stderr}\n${result.stdout}`)}`,
         );
       }
       ok(`installed ${step.spec} on the private gateway`);
@@ -368,14 +438,17 @@ export async function runSetup(params: {
     },
   };
 
-  for (const step of params.steps) {
+  for (const [index, step] of params.steps.entries()) {
+    const done = deps.progress?.(step, index + 1, params.steps.length);
     try {
       await steps[step.kind](step as never);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      done?.();
       deps.log(`  xx  ${message}`);
       return { ok: false, step: step.kind, message };
     }
+    done?.();
   }
   return { ok: true, warnings };
 }

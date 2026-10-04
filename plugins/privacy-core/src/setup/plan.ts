@@ -233,7 +233,9 @@ export type SetupStep =
   | { kind: "store-secret"; profile: "private"; name: string }
   | { kind: "write-env"; profile: "main" | "private"; names: string[] }
   | { kind: "write-private-config" }
+  | { kind: "pause-egress-proxy" }
   | { kind: "install-plugin"; spec: string }
+  | { kind: "resume-egress-proxy" }
   | { kind: "update-main-config" }
   | { kind: "install-private-service" }
   | { kind: "restart-main-gateway" }
@@ -255,8 +257,14 @@ export function planSetup(answers: SetupAnswers): SetupStep[] {
       names: [DOOR_TOKENS.inbound, DOOR_TOKENS.outbound, PRIVATE_GATEWAY_TOKEN],
     },
     { kind: "write-private-config" },
+    // Every command of the private profile sends its traffic, npm's included,
+    // to privacy-core's proxy, which only runs inside the private gateway and
+    // does not allow npm. Installs run with it paused; until it is back on,
+    // the privacy rules refuse every private agent run.
+    { kind: "pause-egress-proxy" },
     { kind: "install-plugin", spec: answers.packages.core },
     { kind: "install-plugin", spec: answers.packages.provider },
+    { kind: "resume-egress-proxy" },
     { kind: "update-main-config" },
     { kind: "install-private-service" },
     { kind: "restart-main-gateway" },
