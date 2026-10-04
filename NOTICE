@@ -1,0 +1,23 @@
+OpenClaw Private
+================
+
+Plugins for OpenClaw (https://github.com/openclaw/openclaw), Copyright (c)
+OpenClaw Foundation, MIT License. This repository started as a fork of
+OpenClaw; parts of the plugin structure follow OpenClaw's bundled plugins.
+OpenClaw itself is installed separately and is not included here.
+
+Portions of the action gateway, policy engine, control state machine and audit
+vocabulary are ported from OpenBot (https://github.com/CopilotKit/OpenBot),
+Copyright (c) 2026 CopilotKit, MIT License. Ported files carry a header naming
+their origin.
+
+Ideas (not code) for the privacy architecture were taken from Blobbies
+(https://github.com/KenKaiii/blobbies, AGPL-3.0). No Blobbies source code is
+included.
+
+Third-party runtime dependencies:
+- tinfoil (https://github.com/tinfoilsh/tinfoil-js), Apache-2.0
+- privatemode-ai (Edgeless Systems GmbH), MIT
+- openai (https://github.com/openai/openai-node), Apache-2.0
+- cel-js, MIT
+- typebox, MIT

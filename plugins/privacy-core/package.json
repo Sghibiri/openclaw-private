@@ -1,0 +1,52 @@
+{
+  "name": "openclaw-private",
+  "version": "0.1.0",
+  "description": "OpenClaw Private: keeps private agents on attested or local models, allowlists their internet access, approves actions and skills",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sghibiri/openclaw-private.git",
+    "directory": "plugins/privacy-core"
+  },
+  "homepage": "https://github.com/sghibiri/openclaw-private#readme",
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "privacy",
+    "confidential-computing"
+  ],
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "dependencies": {
+    "cel-js": "0.8.2",
+    "typebox": "1.3.30"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.9.6"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/plugins/privacy-core/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.9.6",
+      "minGatewayVersion": "2026.9.6"
+    },
+    "build": {
+      "openclawVersion": "2026.9.6",
+      "pluginSdkVersion": "2026.9.6"
+    }
+  },
+  "scripts": {
+    "prepublishOnly": "npm --prefix ../.. run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

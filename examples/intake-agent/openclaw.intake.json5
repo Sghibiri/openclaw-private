@@ -1,0 +1,63 @@
+// Merge into the main gateway's openclaw.json. Placeholders: DISCORD_SERVER_ID,
+// FORUM_CHANNEL_ID, COLLEAGUE_USER_ID, OWNER_USER_ID.
+{
+  agents: {
+    ownership: "explicit",
+    entries: {
+      "intake-a": {
+        name: "Intake (project A)",
+        model: "anthropic/claude-opus-5",
+        workspace: "~/.openclaw/workspace-intake-a",
+        // Read and exec for the read-only clone and the two curl calls; nothing else.
+        tools: { profile: "minimal", alsoAllow: ["exec", "read", "ask_user"] },
+        skills: [],
+        sandbox: {
+          mode: "all",
+          scope: "agent",
+          workspaceAccess: "rw",
+          docker: {
+            // The only network use is api.github.com from the two curl commands in AGENTS.md.
+            network: "bridge",
+            binds: [
+              "/srv/project-a:/repo:ro",
+              "/srv/intake-a/github-token:/run/secrets/github-token:ro",
+            ],
+          },
+        },
+        groupChat: { mentionPatterns: ["intake"] },
+      },
+    },
+  },
+  bindings: [
+    {
+      agentId: "intake-a",
+      comment: "The intake bot account only ever reaches the intake agent",
+      match: { channel: "discord", accountId: "intake" },
+    },
+  ],
+  channels: {
+    discord: {
+      enabled: true,
+      groupPolicy: "allowlist",
+      accounts: {
+        intake: {
+          token: { source: "store", provider: "default", id: "DISCORD_INTAKE_BOT_TOKEN" },
+        },
+      },
+      guilds: {
+        DISCORD_SERVER_ID: {
+          requireMention: true,
+          users: ["COLLEAGUE_USER_ID", "OWNER_USER_ID"],
+          channels: {
+            // The forum: every post is a thread, every thread is one request and one session.
+            FORUM_CHANNEL_ID: { enabled: true, requireMention: false },
+          },
+        },
+      },
+    },
+  },
+  plugins: {
+    // Add "discord" to the existing bundled allowlist; do not replace it.
+    allow: ["discord"],
+  },
+}

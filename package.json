@@ -1,0 +1,29 @@
+{
+  "name": "openclaw-private-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenClaw Private: attested-model providers and privacy governance as plugins for stock OpenClaw",
+  "type": "module",
+  "workspaces": [
+    "plugins/*"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "format": "oxfmt --write plugins shared test docs examples README.md",
+    "format:check": "oxfmt --check plugins shared test docs examples README.md",
+    "check": "npm run format:check && npm run typecheck && npm test && npm run build",
+    "build": "node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "26.5.1",
+    "openclaw": "2026.9.6",
+    "oxfmt": "0.67.0",
+    "typescript": "6.0.3",
+    "vitest": "5.0.0"
+  },
+  "engines": {
+    "node": ">=24.16.0"
+  },
+  "license": "MIT"
+}

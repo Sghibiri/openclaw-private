@@ -1,0 +1,51 @@
+{
+  "name": "openclaw-private-tinfoil",
+  "version": "0.1.0",
+  "description": "OpenClaw Private: Tinfoil provider that verifies the hardware enclave before every request",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sghibiri/openclaw-private.git",
+    "directory": "plugins/tinfoil"
+  },
+  "homepage": "https://github.com/sghibiri/openclaw-private#readme",
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "privacy",
+    "confidential-computing"
+  ],
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "dependencies": {
+    "tinfoil": "1.2.1"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.9.6"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/plugins/tinfoil/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.9.6",
+      "minGatewayVersion": "2026.9.6"
+    },
+    "build": {
+      "openclawVersion": "2026.9.6",
+      "pluginSdkVersion": "2026.9.6"
+    }
+  },
+  "scripts": {
+    "prepublishOnly": "npm --prefix ../.. run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

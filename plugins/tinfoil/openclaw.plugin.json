@@ -1,0 +1,117 @@
+{
+  "id": "tinfoil",
+  "categories": ["models"],
+  "activation": {
+    "onStartup": true
+  },
+  "enabledByDefault": true,
+  "providers": ["tinfoil"],
+  "providerAuthChoices": [
+    {
+      "provider": "tinfoil",
+      "method": "api-key",
+      "choiceId": "tinfoil-api-key",
+      "appGuidedSecret": true,
+      "choiceLabel": "Tinfoil API key",
+      "groupId": "tinfoil",
+      "groupLabel": "Tinfoil",
+      "groupHint": "Attested confidential-compute enclaves (AMD SEV-SNP)",
+      "optionKey": "tinfoilApiKey",
+      "cliFlag": "--tinfoil-api-key",
+      "cliOption": "--tinfoil-api-key <key>",
+      "cliDescription": "Tinfoil API key"
+    }
+  ],
+  "configGroups": [
+    {
+      "id": "attestation",
+      "title": "Attestation",
+      "order": 10,
+      "properties": ["attestation"]
+    },
+    {
+      "id": "relay",
+      "title": "Relay",
+      "order": 20,
+      "properties": ["relay"]
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "attestation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "maxAgeMinutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1440,
+            "description": "Re-verify the enclave after this many minutes. Default 15."
+          }
+        }
+      },
+      "relay": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "port": {
+            "type": "integer",
+            "minimum": 1024,
+            "maximum": 65535,
+            "description": "Loopback port of the attested relay. Default 19931. If you change it, set models.providers.tinfoil.baseUrl to http://127.0.0.1:<port>/v1."
+          }
+        }
+      }
+    }
+  },
+  "setup": {
+    "providers": [
+      {
+        "id": "tinfoil",
+        "authMethods": ["api-key"],
+        "envVars": ["TINFOIL_API_KEY"]
+      }
+    ]
+  },
+  "modelCatalog": {
+    "providers": {
+      "tinfoil": {
+        "baseUrl": "http://127.0.0.1:19931/v1",
+        "api": "openai-completions",
+        "defaultModel": "gpt-oss-120b",
+        "models": [
+          {
+            "id": "gpt-oss-120b",
+            "name": "gpt-oss-120b (Tinfoil enclave)",
+            "reasoning": true,
+            "input": ["text"],
+            "contextWindow": 131072,
+            "maxTokens": 32768,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            }
+          },
+          {
+            "id": "deepseek-v4-flash",
+            "name": "DeepSeek V4 Flash (Tinfoil enclave)",
+            "reasoning": true,
+            "input": ["text"],
+            "contextWindow": 1048576,
+            "maxTokens": 32768,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            }
+          }
+        ]
+      }
+    }
+  }
+}

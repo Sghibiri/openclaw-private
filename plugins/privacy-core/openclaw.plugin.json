@@ -1,0 +1,185 @@
+{
+  "id": "privacy-core",
+  "categories": [
+    "security"
+  ],
+  "name": "Privacy Core",
+  "description": "OpenClaw Private governance: run gate, egress allowlist, CEL action policy (decide, record, then act), the door between gateways, take-the-wheel, privacy audit.",
+  "cliCommands": [
+    {
+      "name": "privacy",
+      "description": "Privacy posture, take-the-wheel, and agent memory",
+      "hasSubcommands": true
+    }
+  ],
+  "activation": {
+    "onStartup": true,
+    "onCommands": [
+      "privacy"
+    ]
+  },
+  "contracts": {
+    "tools": [
+      "ask_private_agent",
+      "request_help"
+    ],
+    "trustedToolPolicies": [
+      "privacy-action-gateway"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "mode": {
+        "type": "string",
+        "enum": [
+          "standard",
+          "private"
+        ],
+        "description": "private turns this gateway into the private house: attested or local models only, sandbox on, allowlisted plugins and egress, A2A as the only channel. standard (default) changes nothing."
+      },
+      "residency": {
+        "type": "string",
+        "enum": [
+          "any",
+          "eu"
+        ],
+        "description": "eu restricts every agent to providers whose region is eu or local."
+      },
+      "providers": {
+        "type": "object",
+        "description": "Operator-declared regions for providers this pack does not know. Region only: a declaration never makes a provider attested. Confirm with the vendor's contract first.",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "region"
+          ],
+          "properties": {
+            "region": {
+              "type": "string",
+              "enum": [
+                "us",
+                "eu",
+                "local"
+              ]
+            }
+          }
+        }
+      },
+      "egress": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "allow": {
+            "type": "array",
+            "maxItems": 256,
+            "items": {
+              "type": "string"
+            },
+            "description": "Extra hosts a private gateway may reach (exact lowercase hostnames, or *.example.com)."
+          },
+          "proxyPort": {
+            "type": "integer",
+            "minimum": 1024,
+            "maximum": 65535,
+            "description": "Loopback port of the egress proxy. Default 19930. proxy.proxyUrl must be http://127.0.0.1:<port>."
+          }
+        }
+      },
+      "boundary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "summary_only",
+              "block"
+            ]
+          },
+          "maxChars": {
+            "type": "integer",
+            "minimum": 200,
+            "maximum": 64000
+          }
+        }
+      },
+      "policy": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "CEL action policy. Deny is evaluated first, then approve, then allow.",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "enforce",
+              "dry-run"
+            ]
+          },
+          "deny": {
+            "type": "array",
+            "maxItems": 256,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "approve": {
+            "type": "array",
+            "maxItems": 256,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "allow": {
+            "type": "array",
+            "maxItems": 256,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      },
+      "skills": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Skill approval. An agent run is refused while a skill folder the gateway loads for it has a fingerprint that is not approved. Always required in private mode.",
+        "properties": {
+          "approval": {
+            "type": "string",
+            "enum": [
+              "required",
+              "off"
+            ],
+            "description": "required turns skill approval on for a standard gateway. Private mode always requires it."
+          },
+          "approved": {
+            "type": "object",
+            "description": "Approved fingerprints per skill name. Written by openclaw privacy skills approve; do not edit by hand.",
+            "maxProperties": 1024,
+            "additionalProperties": {
+              "type": "array",
+              "maxItems": 64,
+              "items": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      },
+      "sandbox": {
+        "type": "string",
+        "enum": [
+          "required",
+          "off"
+        ],
+        "description": "Private mode only. required (default): private agents run their tools in a Docker or Podman container. off (lite mode, no Docker): private agents may have no shell, file, browser or computer tools."
+      }
+    }
+  }
+}
