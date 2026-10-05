@@ -33,6 +33,8 @@ export type PrivacyAuditSummary = {
     boundaryCrossings: { total: number; bytes: number };
     attestationFailures: number;
     control: Record<"help_requested" | "secret_requested" | "taken" | "released", number>;
+    /** Mail connector reads: how many searches, emails read and calendar lookups. */
+    mail: Record<"search" | "read" | "calendar", number>;
   };
 };
 
@@ -81,6 +83,7 @@ export function summarizePrivacyAuditRows(params: {
   let crossingBytes = 0;
   let attestationFailures = 0;
   const control = { help_requested: 0, secret_requested: 0, taken: 0, released: 0 };
+  const mail = { search: 0, read: 0, calendar: 0 };
   for (const row of params.rows) {
     if (row.kind === "validation") {
       lastValidation = row;
@@ -113,6 +116,11 @@ export function summarizePrivacyAuditRows(params: {
       case "control":
         control[row.event] += 1;
         break;
+      case "mail":
+        if (row.ok) {
+          mail[row.action] += 1;
+        }
+        break;
       default:
         break;
     }
@@ -137,6 +145,7 @@ export function summarizePrivacyAuditRows(params: {
       boundaryCrossings: { total: crossings, bytes: crossingBytes },
       attestationFailures,
       control,
+      mail,
     },
   };
 }

@@ -3,8 +3,8 @@
 // The private gateway's config sets `proxy.proxyUrl` to this proxy, so OpenClaw
 // routes every outbound HTTP, HTTPS and WebSocket connection of the gateway
 // process (and the proxy env of its child processes) through it. Only HTTPS
-// CONNECT tunnels to allowlisted hosts on port 443 are opened, and only to
-// public addresses. Everything else gets 403 and an audit row. If privacy-core
+// CONNECT tunnels to allowlisted hosts on port 443 are opened (and port 993,
+// IMAP over TLS, to the connected mail provider), and only to public addresses. Everything else gets 403 and an audit row. If privacy-core
 // is not running, the proxy is absent and the gateway reaches nothing outside
 // the machine: the failure mode is closed.
 //
@@ -18,6 +18,7 @@ import { isHostAllowed, normalizeHost } from "../../../shared/hosts.js";
 import { markServiceDown, markServiceUp } from "../../../shared/rules/service-registry.js";
 
 const TUNNEL_PORT = 443;
+const IMAPS_PORT = 993;
 const REFUSAL_LOG_INTERVAL_MS = 60_000;
 const REFUSAL_LOG_MAX_HOSTS = 1_000;
 const CONNECT_TIMEOUT_MS = 15_000;
@@ -28,6 +29,8 @@ export type EgressRefusal = "not_allowlisted" | "private_address" | "config_unsa
 
 export type EgressProxyOptions = {
   allow: () => readonly string[];
+  /** Hosts that may also be reached on port 993 (the connected mail provider's IMAP server). */
+  allowImap?: () => readonly string[];
   port: number;
   /** A message means "refuse every connection" (privacy config unsafe). */
   guard?: () => string | undefined;
@@ -120,7 +123,9 @@ export function createEgressProxy(options: EgressProxyOptions): EgressProxy {
     }
     options.onRefused?.(host || "(invalid request)", "not_https");
     res.writeHead(403, { connection: "close" });
-    res.end("privacy egress proxy: only HTTPS (CONNECT to port 443) is allowed\n");
+    res.end(
+      "privacy egress proxy: only CONNECT tunnels (HTTPS, or IMAPS to the mail provider) are allowed\n",
+    );
   };
 
   const onConnect = (req: http.IncomingMessage, client: net.Socket, head: Buffer) => {
@@ -132,11 +137,12 @@ export function createEgressProxy(options: EgressProxyOptions): EgressProxy {
       refuse(client, host, "config_unsafe");
       return;
     }
-    if (
-      !authority ||
-      authority.port !== TUNNEL_PORT ||
-      !isHostAllowed(authority.host, options.allow())
-    ) {
+    const permitted =
+      authority !== null &&
+      ((authority.port === TUNNEL_PORT && isHostAllowed(authority.host, options.allow())) ||
+        (authority.port === IMAPS_PORT &&
+          isHostAllowed(authority.host, options.allowImap?.() ?? [])));
+    if (!authority || !permitted) {
       refuse(client, host, "not_allowlisted");
       return;
     }
@@ -154,7 +160,7 @@ export function createEgressProxy(options: EgressProxyOptions): EgressProxy {
         refuse(client, host, "private_address");
         return;
       }
-      const upstream = connect(TUNNEL_PORT, target);
+      const upstream = connect(authority.port, target);
       sockets.add(upstream);
       upstream.on("close", () => sockets.delete(upstream));
       let established = false;

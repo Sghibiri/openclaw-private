@@ -18,6 +18,7 @@ It runs on stock OpenClaw. You install OpenClaw with its official installer, kee
 - Every action that changes something (send, submit, run, write) waits for your approval. Reading is free.
 - They use only skills you approved. A skill that changes, even by one character, needs a new approval. Before approving, `openclaw privacy skills check` tells you in plain words what a skill can do and what looks dangerous.
 - Your visible assistant can ask a private agent a question and gets back a short text answer. The raw email or page never leaves the private side.
+- The private Inbox agent can read your Gmail and Google Calendar, read-only, once you connect them (`openclaw privacy mail connect`, about 2 minutes).
 - When a private agent needs you (a login, a captcha), it asks; you take the wheel and hand it back.
 
 One Telegram bot, one dashboard, two houses behind them.
@@ -56,7 +57,13 @@ openclaw privacy setup                             # 3. asks two questions, does
 - installs the plugins on the private gateway and starts it as a background service
 - connects your main gateway, then confirms "privacy config ok"
 
-Then ask your assistant on Telegram: "Ask the inbox agent what it can do." Run it again any time; it repeats or skips finished steps safely. `--dry-run` shows the plan without changing anything. The manual route, step by step, is in [docs/GO-LIVE-MAC.md](docs/GO-LIVE-MAC.md).
+Then connect your email (optional, about 2 minutes, read-only):
+
+```bash
+openclaw privacy mail connect     # Gmail address, an app password, and optionally your calendar's private link
+```
+
+Then ask your assistant on Telegram: "Ask the inbox agent what is important in my email today." Run it again any time; it repeats or skips finished steps safely. `--dry-run` shows the plan without changing anything. The manual route, step by step, is in [docs/GO-LIVE-MAC.md](docs/GO-LIVE-MAC.md).
 
 ## Documentation
 

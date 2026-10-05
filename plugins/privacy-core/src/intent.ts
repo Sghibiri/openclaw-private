@@ -2,6 +2,7 @@
 // rather than which tool was called. Derived here for every call so a new tool
 // cannot arrive without an intent and fall outside every rule written in terms
 // of one. Adapted from OpenBot's `intentOf` (MIT, (c) 2026 CopilotKit).
+import { MAIL_TOOL_NAMES } from "../../../shared/mail.js";
 import type { PolicyContext, PolicyIntent } from "./policy.js";
 
 const ACTIVATING_KEYS = new Set(["Enter", "NumpadEnter", "Space", " "]);
@@ -25,6 +26,8 @@ const WRITE_FILE_TOOLS = new Set(["write", "edit", "apply_patch"]);
 const READ_FILE_TOOLS = new Set(["read"]);
 const LIST_FILE_TOOLS = new Set(["ls", "list_dir"]);
 const COMMAND_TOOLS = new Set(["exec", "process", "gateway_exec", "gateway_process"]);
+/** privacy-core's own tools that can only read (the mail connector). */
+const READ_ONLY_TOOLS = new Set<string>(MAIL_TOOL_NAMES);
 
 function readString(params: Record<string, unknown>, key: string): string {
   const value = params[key];
@@ -144,6 +147,9 @@ export function resolveIntentSubject(
   }
   if (LIST_FILE_TOOLS.has(toolName)) {
     return { ...NEUTRAL, intent: "list_files", file: describeFile(readString(params, "path")) };
+  }
+  if (READ_ONLY_TOOLS.has(toolName)) {
+    return { ...NEUTRAL, intent: "read_tool" };
   }
   const mcp = parseMcpToolName(toolName);
   if (mcp) {

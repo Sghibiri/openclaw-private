@@ -1,6 +1,6 @@
 {
   "name": "openclaw-private-privatemode",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "OpenClaw Private: Privatemode (EU) provider that verifies the hardware enclave before every request",
   "license": "MIT",
   "type": "module",

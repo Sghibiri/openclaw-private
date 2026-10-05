@@ -6,17 +6,22 @@
 //   outbound connection of the gateway goes through an allowlist.
 // - Action gateway: CEL policy, decide-record-act, take-the-wheel.
 // - The door: `ask_private_agent` on the main gateway, the reply filter on the private one.
+// - Mail connector (private mode): read-only mail and calendar tools for the
+//   private agents, with the password and calendar link in the secret store.
 // - Skill approval: runs are refused while a skill folder the gateway loads has a
 //   fingerprint the owner has not approved (always on in private mode).
 // - `openclaw privacy status | control | memory | skills`.
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
+import { resolveConfiguredSecretInputString } from "openclaw/plugin-sdk/secret-input-runtime";
 import { recordPrivacyAuditEvent, type PrivacyAuditEvent } from "../../shared/audit.js";
+import { isMailProviderId, MAIL_PROVIDERS } from "../../shared/mail.js";
 import { privacyConfigRefusal } from "../../shared/rules/guard.js";
-import { resolvePrivacySettings } from "../../shared/rules/settings.js";
+import { egressProxyUrl, resolvePrivacySettings } from "../../shared/rules/settings.js";
 import { authoredConfig } from "../../shared/rules/source-config.js";
 import {
   formatPrivacyConfigIssues,
   resolveEgressAllowlist,
+  resolveMailImapHosts,
   validatePrivacyConfig,
   type HostConfig,
 } from "../../shared/rules/validate.js";
@@ -26,6 +31,8 @@ import { registerControlGatewayMethods } from "./src/control-methods.js";
 import { createControlRegistry } from "./src/control.js";
 import { createDoorReplyHook } from "./src/door-hook.js";
 import { createEgressProxy, type EgressProxy } from "./src/egress-proxy.js";
+import { createMailReader } from "./src/mail/imap.js";
+import { createMailTools } from "./src/mail/tools.js";
 import { resolveActionPolicy } from "./src/policy.js";
 import { createRequestHelpTool, REQUEST_HELP_TOOL_NAME } from "./src/request-help-tool.js";
 import { createRunGate } from "./src/run-gate.js";
@@ -130,6 +137,7 @@ export default definePluginEntry({
           proxy = createEgressProxy({
             port: settings.egress.proxyPort,
             allow: () => resolveEgressAllowlist(currentConfig(), settings),
+            allowImap: () => resolveMailImapHosts(settings),
             guard: () => privacyConfigRefusal(currentConfig()),
             onRefused: (host, reason) => {
               record({ kind: "egress_blocked", host, source: `proxy:${reason}` });
@@ -143,6 +151,43 @@ export default definePluginEntry({
           proxy = undefined;
         },
       });
+      const mail = settings.mail;
+      if (mail && isMailProviderId(mail.provider)) {
+        const provider = MAIL_PROVIDERS[mail.provider];
+        const secret = async (value: unknown, key: string) =>
+          (
+            await resolveConfiguredSecretInputString({
+              config: api.config,
+              env: process.env,
+              value,
+              path: `plugins.entries.privacy-core.config.mail.${key}`,
+            })
+          ).value;
+        for (const tool of createMailTools({
+          provider,
+          reader: async () => {
+            const password = await secret(mail.password, "password");
+            if (!password) {
+              throw new Error(
+                "the mail password is missing from the secret store; the owner can run: openclaw privacy mail connect",
+              );
+            }
+            return createMailReader({
+              host: provider.imapHost,
+              port: provider.imapPort,
+              user: mail.address,
+              password,
+              proxyUrl: egressProxyUrl(settings.egress.proxyPort),
+              gmail: mail.provider === "gmail",
+            });
+          },
+          calendarUrl: async () =>
+            mail.calendarUrl === undefined ? undefined : secret(mail.calendarUrl, "calendarUrl"),
+          record,
+        })) {
+          api.registerTool(tool);
+        }
+      }
       // The private side of the door: filter and record every A2A reply.
       api.on(
         "reply_payload_sending",

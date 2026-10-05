@@ -27,6 +27,7 @@ async function listen(server: net.Server): Promise<number> {
 
 async function startProxy(params: {
   allow: string[];
+  allowImap?: string[];
   addresses?: Record<string, string[]>;
   guard?: () => string | undefined;
 }) {
@@ -34,21 +35,24 @@ async function startProxy(params: {
   const echoPort = await listen(echo);
   const refused: string[] = [];
   const dialed: string[] = [];
+  const ports: number[] = [];
   const proxy: EgressProxy = createEgressProxy({
     port: 0,
     allow: () => params.allow,
+    ...(params.allowImap ? { allowImap: () => params.allowImap ?? [] } : {}),
     guard: params.guard,
     onRefused: (host, reason) => refused.push(`${reason}:${host}`),
     resolve: async (host) => params.addresses?.[host] ?? ["93.184.216.34"],
     // Every public upstream is the local echo server.
-    connect: (_port, address) => {
+    connect: (port, address) => {
       dialed.push(address);
+      ports.push(port);
       return net.connect(echoPort, "127.0.0.1");
     },
   });
   const url = new URL(await proxy.start());
   cleanups.push(() => proxy.stop());
-  return { proxyPort: Number(url.port), refused, dialed };
+  return { proxyPort: Number(url.port), refused, dialed, ports };
 }
 
 function connectViaProxy(
@@ -166,5 +170,44 @@ describe("privacy egress proxy", () => {
     for (const address of ["93.184.216.34", "2606:4700::1111"]) {
       expect(isNonPublicAddress(address), address).toBe(false);
     }
+  });
+});
+
+describe("egress proxy: the mail port", () => {
+  it("opens port 993 only to the connected mail provider, and 443 stays as it was", async () => {
+    const { proxyPort, refused, ports } = await startProxy({
+      allow: ["api.tinfoil.sh", "calendar.google.com"],
+      allowImap: ["imap.gmail.com"],
+    });
+    expect(await connectViaProxy(proxyPort, "imap.gmail.com:993")).toEqual({
+      status: 200,
+      echo: "ping",
+    });
+    expect(ports).toEqual([993]);
+    // The mail host is not reachable on other ports, and other hosts not on 993.
+    expect((await connectViaProxy(proxyPort, "imap.gmail.com:443")).status).toBe(403);
+    expect((await connectViaProxy(proxyPort, "api.tinfoil.sh:993")).status).toBe(403);
+    expect((await connectViaProxy(proxyPort, "imap.evil.example:993")).status).toBe(403);
+    expect((await connectViaProxy(proxyPort, "calendar.google.com:443")).status).toBe(200);
+    expect(refused).toEqual([
+      "not_allowlisted:imap.gmail.com",
+      "not_allowlisted:api.tinfoil.sh",
+      "not_allowlisted:imap.evil.example",
+    ]);
+  });
+
+  it("keeps port 993 closed when no mailbox is connected", async () => {
+    const { proxyPort } = await startProxy({ allow: ["imap.gmail.com"] });
+    expect((await connectViaProxy(proxyPort, "imap.gmail.com:993")).status).toBe(403);
+  });
+
+  it("refuses a mail host that resolves into the local network", async () => {
+    const { proxyPort, refused } = await startProxy({
+      allow: [],
+      allowImap: ["imap.gmail.com"],
+      addresses: { "imap.gmail.com": ["192.168.1.10"] },
+    });
+    expect((await connectViaProxy(proxyPort, "imap.gmail.com:993")).status).toBe(403);
+    expect(refused).toEqual(["private_address:imap.gmail.com"]);
   });
 });

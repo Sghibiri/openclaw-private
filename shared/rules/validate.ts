@@ -7,7 +7,8 @@ import type { PrivacyConfigIssue } from "../audit-types.js";
 // proxy, so nothing leaves the machine if privacy-core is missing. Every issue
 // names the exact config key to fix.
 import { normalizeHost, PRIVACY_HOSTNAME_RE } from "../hosts.js";
-import { egressProxyUrl, type PrivacySettings } from "./settings.js";
+import { isMailProviderId, MAIL_PROVIDERS, MAIL_TOOL_NAMES } from "../mail.js";
+import { egressProxyUrl, resolvePrivacySettings, type PrivacySettings } from "./settings.js";
 import {
   defaultLocalBaseUrl,
   expectedRelayBaseUrl,
@@ -567,11 +568,13 @@ function validatePrivateMode(config: HostConfig, settings: PrivacySettings): Pri
  * tool, an alias (`cron`, `apply-patch`) or an MCP tool is refused until it
  * is added here.
  */
-export const LITE_ALLOWED_TOOLS = new Set([
+export const LITE_ALLOWED_TOOLS = new Set<string>([
   "group:memory",
   "memory_get",
   "memory_search",
   "session_status",
+  // The mail connector's tools are privacy-core's own code and only read.
+  ...MAIL_TOOL_NAMES,
 ]);
 
 /** Tools the `minimal` profile itself includes that a lite agent must deny. */
@@ -699,6 +702,86 @@ function validateStandardResidency(
   return issues;
 }
 
+const MAIL_ADDRESS_RE = /^[^\s@]{1,64}@[^\s@]{1,253}\.[^\s@]{2,63}$/u;
+
+function isStoredSecretRef(value: unknown): boolean {
+  const ref = value as { source?: unknown; id?: unknown } | undefined;
+  return (
+    Boolean(ref) &&
+    typeof ref === "object" &&
+    (ref.source === "store" || ref.source === "exec" || ref.source === "file") &&
+    typeof ref.id === "string" &&
+    ref.id.length > 0
+  );
+}
+
+/**
+ * The mail block as the owner wrote it. OpenClaw resolves the declared secret
+ * inputs before plugins load, so the plugin's own settings hold the real
+ * password; the authored config still holds the references this rule checks.
+ */
+function authoredMail(config: HostConfig, settings: PrivacySettings): PrivacySettings["mail"] {
+  const entry = config.plugins?.entries?.["privacy-core"];
+  if (!entry) {
+    return settings.mail;
+  }
+  const mail = (entry.config as { mail?: unknown } | undefined)?.mail;
+  return mail === undefined ? undefined : resolvePrivacySettings({ mail }).mail;
+}
+
+/** The mail connector: private gateway only, known provider, secrets in the store. */
+function validateMail(config: HostConfig, settings: PrivacySettings): PrivacyConfigIssue[] {
+  const mail = authoredMail(config, settings);
+  if (!mail) {
+    return [];
+  }
+  const fix = "run: openclaw privacy mail connect";
+  if (settings.mode !== "private") {
+    return [
+      {
+        path: `${SETTINGS}.mail`,
+        message:
+          "the mail connector runs only on the private gateway, where only an enclave model reads email; remove it here and run: openclaw privacy mail connect",
+      },
+    ];
+  }
+  const issues: PrivacyConfigIssue[] = [];
+  if (!isMailProviderId(mail.provider)) {
+    issues.push({
+      path: `${SETTINGS}.mail.provider`,
+      message: `unknown mail provider "${mail.provider}"; supported: ${Object.keys(MAIL_PROVIDERS).join(", ")}`,
+    });
+  }
+  if (!MAIL_ADDRESS_RE.test(mail.address)) {
+    issues.push({
+      path: `${SETTINGS}.mail.address`,
+      message: `"${mail.address}" is not an email address; ${fix}`,
+    });
+  }
+  if (!isStoredSecretRef(mail.password)) {
+    issues.push({
+      path: `${SETTINGS}.mail.password`,
+      message: `the mail password must be a secret-store reference, never plain text; ${fix}`,
+    });
+  }
+  if (mail.calendarUrl !== undefined && !isStoredSecretRef(mail.calendarUrl)) {
+    issues.push({
+      path: `${SETTINGS}.mail.calendarUrl`,
+      message: `the calendar link works like a password and must be a secret-store reference; ${fix}`,
+    });
+  }
+  return issues;
+}
+
+/** IMAP hosts the egress proxy may open port 993 to: the connected provider only. */
+export function resolveMailImapHosts(settings: PrivacySettings): string[] {
+  const mail = settings.mail;
+  if (settings.mode !== "private" || !mail || !isMailProviderId(mail.provider)) {
+    return [];
+  }
+  return [MAIL_PROVIDERS[mail.provider].imapHost];
+}
+
 /** Every privacy rule for this gateway. Empty means the config is safe for its mode. */
 export function validatePrivacyConfig(
   config: HostConfig,
@@ -711,6 +794,7 @@ export function validatePrivacyConfig(
       ? validatePrivateMode(config, settings)
       : validateStandardResidency(config, settings)),
     ...validateSkillApproval(config, settings),
+    ...validateMail(config, settings),
   ];
   // One provider block is reported once, however many agents use it.
   const seen = new Set<string>();
@@ -730,6 +814,12 @@ export function resolveEgressAllowlist(config: HostConfig, settings: PrivacySett
   const hosts = new Set<string>(
     settings.egress.allow.filter((host) => PRIVACY_HOSTNAME_RE.test(host)),
   );
+  const mail = settings.mail;
+  if (mail?.calendarUrl !== undefined && isMailProviderId(mail.provider)) {
+    for (const host of MAIL_PROVIDERS[mail.provider].calendarHosts) {
+      hosts.add(host);
+    }
+  }
   for (const { ref } of collectModelRefs(config)) {
     const parsed = parseModelRef(ref);
     if (!parsed) {

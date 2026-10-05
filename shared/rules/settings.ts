@@ -1,5 +1,7 @@
 // privacy-core settings, read from plugins.entries.privacy-core.config.
 // Shared so the attested relays can enforce the same rules without privacy-core.
+import type { MailProviderId } from "../mail.js";
+
 /** Maximum characters of an answer that may leave a private gateway by default. */
 export const BOUNDARY_DEFAULT_MAX_CHARS = 4000;
 
@@ -34,6 +36,16 @@ export type PrivacySettings = {
    * browser or computer tools at all.
    */
   sandbox: "required" | "off";
+  /**
+   * The read-only mail and calendar connector (private mode only). The password
+   * and calendar link are secret-store references, never plain text.
+   */
+  mail?: {
+    provider: MailProviderId | string;
+    address: string;
+    password: unknown;
+    calendarUrl?: unknown;
+  };
   skills: {
     /**
      * `required`: an agent run is refused while a skill folder it loads is not approved
@@ -60,6 +72,7 @@ type RawSettings = {
   policy?: unknown;
   skills?: { approval?: unknown; approved?: unknown };
   sandbox?: unknown;
+  mail?: { provider?: unknown; address?: unknown; password?: unknown; calendarUrl?: unknown };
 };
 
 export function resolvePrivacySettings(raw: unknown): PrivacySettings {
@@ -105,6 +118,18 @@ export function resolvePrivacySettings(raw: unknown): PrivacySettings {
       ? { policy: value.policy as ConfiguredActionPolicy }
       : {}),
     sandbox: value.sandbox === "off" ? "off" : "required",
+    ...(value.mail && typeof value.mail === "object"
+      ? {
+          mail: {
+            provider: typeof value.mail.provider === "string" ? value.mail.provider : "",
+            address: typeof value.mail.address === "string" ? value.mail.address.trim() : "",
+            password: value.mail.password,
+            ...(value.mail.calendarUrl !== undefined
+              ? { calendarUrl: value.mail.calendarUrl }
+              : {}),
+          },
+        }
+      : {}),
     skills: {
       approval: mode === "private" || value.skills?.approval === "required" ? "required" : "off",
       approved,

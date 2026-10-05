@@ -63,6 +63,9 @@ describe("privacy audit summary", () => {
       },
       { kind: "control", agentId: "browser", event: "help_requested", by: "agent", at: at(-4) },
       { kind: "control", agentId: "browser", event: "taken", by: "operator", at: at(-3) },
+      { kind: "mail", action: "search", ok: true, count: 4, at: at(-2) },
+      { kind: "mail", action: "read", ok: true, count: 1, at: at(-2) },
+      { kind: "mail", action: "read", ok: false, count: 0, at: at(-1) },
     ];
     const dir = mkdtempSync(path.join(os.tmpdir(), "openclaw-privacy-summary-"));
     dirs.push(dir);
@@ -93,6 +96,7 @@ describe("privacy audit summary", () => {
       boundaryCrossings: { total: 2, bytes: 200 },
       attestationFailures: 1,
       control: { help_requested: 1, secret_requested: 0, taken: 1, released: 0 },
+      mail: { search: 1, read: 1, calendar: 0 },
     });
   });
 

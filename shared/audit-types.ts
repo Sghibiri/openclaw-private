@@ -30,6 +30,8 @@ export type PrivacyAuditEvent =
       mode: string;
     }
   | { kind: "boundary_crossing"; from: string; to: string; bytes: number; mode: string }
+  /** The private mail connector read something: counts only, never content or subjects. */
+  | { kind: "mail"; action: "search" | "read" | "calendar"; ok: boolean; count: number }
   | {
       kind: "control";
       agentId: string;

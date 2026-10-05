@@ -12,6 +12,16 @@ Adds the private gateway next to this one and connects them, in one guided step.
 
 Every step can run again safely: door tokens already written are reused, so both gateways stay in step, and the private service is reinstalled to load the current config. Without a terminal it needs `--yes`. An existing private config is kept unless `--overwrite` (the old one is saved next to it). `--dry-run` prints the plan. When Docker is not running it offers lite mode, or `--lite` chooses it up front: no Docker steps, `sandbox: "off"` in privacy-core's config, and the inbox agent on the `minimal` tool profile plus memory tools only (no shell, file, browser, scheduler or MCP tools). A lite config is not reused for a full setup, or the other way round, without `--overwrite`. `--from <folder>` installs from `npm pack` tarballs instead of npm, for testing.
 
+## `openclaw privacy mail`
+
+```sh
+openclaw privacy mail connect       # Gmail address, app password, optional calendar link
+openclaw privacy mail status        # which mailbox is connected
+openclaw privacy mail disconnect    # remove it and delete the stored password and link
+```
+
+Run on the main gateway; it changes the private one. `connect` asks for the Gmail address and an app password (from https://myaccount.google.com/apppasswords, which needs 2-Step Verification), shown as stars while you paste. It tests the login (the inbox is opened read-only and nothing is read), then optionally the calendar's "secret address in iCal format". Both go straight into the private gateway's secret store; the config holds only references. It gives the private `inbox` agent three read-only tools, `mail_search`, `mail_read` and `calendar_events`, and restarts the private gateway.
+
 ## `openclaw privacy status`
 
 ```

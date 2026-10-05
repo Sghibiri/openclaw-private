@@ -147,6 +147,26 @@ function parseJsonWith<T>(stdout: string, key: string): T | undefined {
   return undefined;
 }
 
+/**
+ * The environment for an `openclaw --profile private` child: without the
+ * parent's folder and gateway settings, so the profile resolves its own
+ * default folder (OpenClaw only installs a service for a profile's defaults).
+ */
+export function privateProfileEnv(env: Env): Env {
+  const result: Env = { ...env };
+  for (const name of Object.keys(result)) {
+    if (
+      name === "OPENCLAW_PROFILE" ||
+      name === "OPENCLAW_STATE_DIR" ||
+      name === "OPENCLAW_CONFIG_PATH" ||
+      name.startsWith("OPENCLAW_GATEWAY_")
+    ) {
+      delete result[name];
+    }
+  }
+  return result;
+}
+
 export async function runSetup(params: {
   steps: SetupStep[];
   answers: SetupAnswers;
@@ -177,17 +197,7 @@ export async function runSetup(params: {
   for (const name of [...TOKEN_NAMES, ...(params.secretEnvNames ?? [])]) {
     delete scrubbed[name];
   }
-  const privateEnvVars: Env = { ...scrubbed };
-  for (const name of Object.keys(privateEnvVars)) {
-    if (
-      name === "OPENCLAW_PROFILE" ||
-      name === "OPENCLAW_STATE_DIR" ||
-      name === "OPENCLAW_CONFIG_PATH" ||
-      name.startsWith("OPENCLAW_GATEWAY_")
-    ) {
-      delete privateEnvVars[name];
-    }
-  }
+  const privateEnvVars = privateProfileEnv(scrubbed);
 
   const openclaw = (
     profile: "main" | "private",

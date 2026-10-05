@@ -56,6 +56,14 @@ It ends with `ok  the door to the private gateway answers and accepts its token`
 
 To see the plan without changing anything: `openclaw privacy setup --dry-run`. The manual route is in the [appendix](#appendix-manual-setup).
 
+### Connect your email (optional)
+
+```sh
+openclaw privacy mail connect
+```
+
+It asks for your Gmail address and an app password: open https://myaccount.google.com/apppasswords (2-Step Verification must be on), create one named "OpenClaw Private", and paste the 16 letters (stars show while you paste). It tests the login, then offers the calendar: in Google Calendar on a computer, Settings, your calendar, Integrate calendar, "Secret address in iCal format". Then ask on Telegram: "Ask the inbox agent what is important in my email today."
+
 ### Skills on the private gateway
 
 A private agent can use a skill only after you approve it. The example roster gives the inbox agent no skills (`skills: []`), so there is nothing to approve yet. To add one:

@@ -21,11 +21,28 @@
   "contracts": {
     "tools": [
       "ask_private_agent",
-      "request_help"
+      "request_help",
+      "mail_search",
+      "mail_read",
+      "calendar_events"
     ],
     "trustedToolPolicies": [
       "privacy-action-gateway"
     ]
+  },
+  "configContracts": {
+    "secretInputs": {
+      "paths": [
+        {
+          "path": "mail.password",
+          "expected": "string"
+        },
+        {
+          "path": "mail.calendarUrl",
+          "expected": "string"
+        }
+      ]
+    }
   },
   "configSchema": {
     "type": "object",
@@ -179,6 +196,82 @@
           "off"
         ],
         "description": "Private mode only. required (default): private agents run their tools in a Docker or Podman container. off (lite mode, no Docker): private agents may have no shell, file, browser or computer tools."
+      },
+      "mail": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Private mode only: the read-only mail and calendar connector. Set it with: openclaw privacy mail connect",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "gmail"
+            ],
+            "description": "Email provider."
+          },
+          "address": {
+            "type": "string",
+            "maxLength": 320,
+            "description": "The email address to read."
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "source",
+                  "id"
+                ]
+              }
+            ],
+            "description": "App password, as a secret-store reference."
+          },
+          "calendarUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "source",
+                  "id"
+                ]
+              }
+            ],
+            "description": "Private calendar link (iCal), as a secret-store reference."
+          }
+        },
+        "required": [
+          "provider",
+          "address",
+          "password"
+        ]
       }
     }
   }

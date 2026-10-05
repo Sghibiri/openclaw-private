@@ -12,6 +12,7 @@ import {
 } from "../../../shared/rules/validate.js";
 import { summarizePrivacyAuditLog, type PrivacyAuditSummary } from "./audit-summary.js";
 import { registerPrivacyControlCli } from "./control-cli.js";
+import { registerMailCli } from "./mail/mail-cli.js";
 import { registerPrivacyMemoryCli } from "./memory-cli-register.js";
 import { resolveActionPolicy } from "./policy.js";
 import { registerPrivacySetupCli } from "./setup/cli.js";
@@ -34,6 +35,8 @@ export type PrivacyStatusReport = {
   /** `required`: runs are refused while a skill folder an agent loads is not approved. */
   skillApproval: "required" | "off";
   sandbox: "required" | "off";
+  /** The connected mailbox, if any (no secrets). */
+  mail?: { provider: string; address: string; calendar: boolean };
   audit: PrivacyAuditSummary;
 };
 
@@ -83,6 +86,15 @@ export function buildPrivacyStatusReport(params: {
     },
     skillApproval: settings.skills.approval,
     sandbox: settings.sandbox,
+    ...(settings.mail
+      ? {
+          mail: {
+            provider: settings.mail.provider,
+            address: settings.mail.address,
+            calendar: settings.mail.calendarUrl !== undefined,
+          },
+        }
+      : {}),
     audit: summarizePrivacyAuditLog({
       since: params.since,
       env: params.env,
@@ -117,6 +129,11 @@ export function formatPrivacyStatusReport(report: PrivacyStatusReport, window: s
       report.sandbox === "off"
         ? "Sandbox: lite mode (no Docker; private agents have no shell, file or browser tools)"
         : "Sandbox: required (private agents run their tools in a container)",
+    );
+    lines.push(
+      report.mail
+        ? `Mail: ${report.mail.address} (${report.mail.provider}), read-only; calendar ${report.mail.calendar ? "connected" : "not connected"}`
+        : "Mail: not connected (openclaw privacy mail connect)",
     );
   }
   lines.push(
@@ -183,6 +200,7 @@ export function formatPrivacyStatusReport(report: PrivacyStatusReport, window: s
   );
   lines.push(
     `  boundary crossings: ${audit.window.boundaryCrossings.total} (${audit.window.boundaryCrossings.bytes} bytes left the private gateway)`,
+    `  mail: ${audit.window.mail.search} searches, ${audit.window.mail.read} emails read, ${audit.window.mail.calendar} calendar lookups`,
   );
   const control = audit.window.control;
   lines.push(
@@ -224,6 +242,7 @@ export function registerPrivacyCli(program: CliProgram, api: OpenClawPluginApi):
     });
   registerPrivacyControlCli(privacy);
   registerPrivacySetupCli(privacy, PACK_VERSION);
+  registerMailCli(privacy);
   registerPrivacyMemoryCli(privacy, () => api.config);
   registerPrivacySkillsCli(privacy, {
     config: () => authoredConfig(api.config),

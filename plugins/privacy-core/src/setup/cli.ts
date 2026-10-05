@@ -120,7 +120,7 @@ export function hiddenInputStep(
   return { value, echo, done: false, cancelled: false };
 }
 
-function askHidden(question: string): Promise<string> {
+export function askHidden(question: string): Promise<string> {
   const stdin = process.stdin;
   process.stdout.write(question);
   return new Promise((resolve, reject) => {
@@ -150,7 +150,7 @@ function askHidden(question: string): Promise<string> {
   });
 }
 
-async function ask(question: string, hidden = false): Promise<string> {
+export async function ask(question: string, hidden = false): Promise<string> {
   if (hidden && process.stdin.isTTY) {
     return askHidden(question);
   }
@@ -183,7 +183,13 @@ function createSpinner(write: (text: string) => void) {
       let frame = 0;
       const draw = () => {
         const seconds = Math.floor((Date.now() - started) / 1000);
-        line = `  ${SPINNER[frame++ % SPINNER.length]}  ${label}${seconds >= 2 ? ` (${seconds}s)` : ""}`;
+        const time = seconds >= 2 ? ` (${seconds}s)` : "";
+        // A line wider than the window wraps, and \r then only rewinds the last
+        // row, leaving a copy per frame; so it is cut to fit, keeping the time.
+        const room = Math.max(10, (process.stdout.columns || 80) - 6 - time.length - 1);
+        const text =
+          [...label].length > room ? `${[...label].slice(0, room - 1).join("")}…` : label;
+        line = `  ${SPINNER[frame++ % SPINNER.length]}  ${text}${time}`;
         write(`\r\u001b[2K${line}`);
       };
       draw();
@@ -219,7 +225,7 @@ function describe(step: SetupStep): string {
     case "pause-egress-proxy":
       return "pause the private gateway's egress proxy so its plugins can download";
     case "install-plugin":
-      return `install ${step.spec} on the private gateway`;
+      return `install ${step.spec.replace(/^npm-pack:.*\//u, "")} on the private gateway`;
     case "resume-egress-proxy":
       return "turn the egress proxy back on";
     case "update-main-config":
@@ -426,7 +432,7 @@ export async function runPrivacySetup(
     return true;
   }
   log(
-    '\nDone. Ask your assistant on Telegram: "Ask the inbox agent what it can do."\nCheck the private side any time with: openclaw --profile private privacy status',
+    '\nDone. Next, connect your email (optional, read-only): openclaw privacy mail connect\nThen ask your assistant on Telegram: "Ask the inbox agent what is important in my email today."\nCheck the private side any time with: openclaw --profile private privacy status',
   );
   return true;
 }
