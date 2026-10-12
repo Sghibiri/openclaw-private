@@ -52,7 +52,7 @@ Then in the private gateway's `openclaw.json` (stock OpenClaw requires the full 
 }
 ```
 
-`deepseek-v4-flash` is also available; add it to `models` the same way. To move the relay, set `plugins.entries.tinfoil.config.relay.port` and the matching `baseUrl`.
+To use another Tinfoil model, run `openclaw privacy model` to list the ones that can use tools (with context size and price), then `openclaw privacy model set <id>`; it adds the model to `models`, points the Inbox agent at it, and restarts and checks the private gateway. To move the relay, set `plugins.entries.tinfoil.config.relay.port` and the matching `baseUrl`.
 
 ## Network
 

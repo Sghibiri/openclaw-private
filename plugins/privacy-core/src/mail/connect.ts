@@ -34,7 +34,9 @@ const storeRef = (id: string) => ({ source: "store", provider: "default", id });
 const lastLine = (result: RunResult) =>
   (result.stderr || result.stdout).trim().split("\n").slice(-1)[0] ?? "";
 
-async function readPrivateConfig(deps: MailCliDeps): Promise<PrivateConfig> {
+export async function readPrivateConfig(
+  deps: Pick<MailCliDeps, "readFile" | "privateConfigPath">,
+): Promise<PrivateConfig> {
   const raw = await deps.readFile(deps.privateConfigPath);
   if (raw === undefined) {
     throw new Error(
@@ -88,7 +90,7 @@ function privacyCoreConfig(config: PrivateConfig): Record<string, unknown> {
   return (entry.config ??= {});
 }
 
-async function restartAndVerify(deps: MailCliDeps): Promise<string[]> {
+export async function restartAndVerify(deps: MailCliDeps): Promise<string[]> {
   const warnings: string[] = [];
   const restart = await deps.openclawPrivate(["gateway", "restart"]);
   if (restart.code !== 0) {

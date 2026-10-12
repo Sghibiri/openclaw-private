@@ -115,6 +115,7 @@ The same answers, in plain words, are on the dashboard: open **Privacy** in the 
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Is everything up                        | `openclaw gateway status` and `openclaw --profile private gateway status`                                         |
 | Who reads my email, is it protected     | **Privacy** in the dashboard sidebar                                                                              |
+| Change the model that reads my email    | `openclaw privacy model`, then `openclaw privacy model set <id>`                                                  |
 | Privacy posture, attestations, refusals | `openclaw --profile private privacy status --since 7d`                                                            |
 | Dashboard                               | `openclaw dashboard`                                                                                              |
 | Logs                                    | `openclaw logs` (add `--profile private`)                                                                         |

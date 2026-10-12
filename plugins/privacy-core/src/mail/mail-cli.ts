@@ -23,7 +23,8 @@ import { createImapClient } from "./imap.js";
 type CliProgram = Parameters<Parameters<OpenClawPluginApi["registerCli"]>[0]>[0]["program"];
 type PrivacyCommand = ReturnType<CliProgram["command"]>;
 
-function mailDeps(): MailCliDeps {
+/** Effects for commands that change the private gateway from the main one. */
+export function privateGatewayDeps(): MailCliDeps {
   const privateConfigPath = path.join(
     resolveRequiredHomeDir(),
     `.openclaw-${PRIVATE_PROFILE}`,
@@ -136,7 +137,7 @@ async function runConnect(): Promise<boolean> {
   console.log("");
   const { warnings } = await connectMail(
     { provider: "gmail", address, password, ...(calendarUrl ? { calendarUrl } : {}) },
-    mailDeps(),
+    privateGatewayDeps(),
   );
   finish(
     warnings,
@@ -166,7 +167,7 @@ export function registerMailCli(privacy: PrivacyCommand): void {
     .description("Remove the connector and delete the stored password and calendar link")
     .action(async () => {
       try {
-        const { warnings } = await disconnectMail(mailDeps());
+        const { warnings } = await disconnectMail(privateGatewayDeps());
         finish(warnings, "Done. The private gateway no longer reads your email.");
       } catch (error) {
         console.error(error instanceof Error ? error.message : String(error));
@@ -177,7 +178,7 @@ export function registerMailCli(privacy: PrivacyCommand): void {
     .command("status")
     .description("Show which mailbox is connected")
     .action(async () => {
-      const deps = mailDeps();
+      const deps = privateGatewayDeps();
       console.log(describeMailConnection(await deps.readFile(deps.privateConfigPath)));
     });
 }

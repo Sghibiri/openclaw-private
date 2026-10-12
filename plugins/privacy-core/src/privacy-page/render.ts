@@ -162,6 +162,7 @@ section { margin-top: 28px; }
 .flow li { position: relative; }
 .flow .model { font-weight: 400; color: var(--muted); }
 .flow-note { margin: 0; }
+.flow-note.change { margin-top: 6px; color: var(--muted); font-size: 13px; }
 .status, .activity { list-style: none; margin: 0; padding: 0; }
 .status li { display: grid; grid-template-columns: 28px 1fr; gap: 2px 10px; padding: 12px 0; border-top: 1px solid var(--line); }
 .status li:first-child { border-top: 0; padding-top: 0; }
@@ -252,6 +253,7 @@ export function renderPrivacyPage(
       <li>Your email</li>
     </ol>
     <p class="flow-note">Your main assistant never sees an email. It only gets short answers.</p>
+    <p class="flow-note change">${runInTerminal(`To change the ${agent}'s model`, "openclaw privacy model")}</p>
   </section>
   <section aria-labelledby="status-heading" class="card">
     <h2 id="status-heading" class="visually-hidden">Status</h2>

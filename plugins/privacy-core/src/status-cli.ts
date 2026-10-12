@@ -14,6 +14,7 @@ import { summarizePrivacyAuditLog, type PrivacyAuditSummary } from "./audit-summ
 import { registerPrivacyControlCli } from "./control-cli.js";
 import { registerMailCli } from "./mail/mail-cli.js";
 import { registerPrivacyMemoryCli } from "./memory-cli-register.js";
+import { registerModelCli } from "./model/model-cli.js";
 import { resolveActionPolicy } from "./policy.js";
 import { registerPrivacySetupCli } from "./setup/cli.js";
 import { registerPrivacySkillsCli } from "./skills-cli.js";
@@ -243,6 +244,7 @@ export function registerPrivacyCli(program: CliProgram, api: OpenClawPluginApi):
   registerPrivacyControlCli(privacy);
   registerPrivacySetupCli(privacy, PACK_VERSION);
   registerMailCli(privacy);
+  registerModelCli(privacy);
   registerPrivacyMemoryCli(privacy, () => api.config);
   registerPrivacySkillsCli(privacy, {
     config: () => authoredConfig(api.config),

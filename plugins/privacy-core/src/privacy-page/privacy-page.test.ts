@@ -246,6 +246,9 @@ describe("privacy page rendering", () => {
     expect(text).toContain("Main assistant (OpenAI gpt-6-astra)");
     expect(text).toContain("Inbox agent (gpt-oss-120b on Tinfoil)");
     expect(text).toContain("Your main assistant never sees an email. It only gets short answers.");
+    expect(text).toContain(
+      "To change the Inbox agent's model, run in Terminal: openclaw privacy model",
+    );
     expect(text).toContain("Protection is on");
     expect(text).toContain("The Inbox agent reads owner@example.com, read-only");
     expect(text).toContain("Tinfoil's secure hardware verified 4 minutes ago");
