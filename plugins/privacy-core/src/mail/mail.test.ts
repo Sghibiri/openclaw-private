@@ -460,6 +460,37 @@ describe("mail tools", () => {
     expect(JSON.stringify(audit)).not.toMatch(/bob|password|Team call/u);
   });
 
+  it("give code-mode scripts the same text the model sees, since they only receive details", async () => {
+    const [search, read] = createMailTools({
+      provider: gmail,
+      reader: async () => ({
+        search: async () => [
+          {
+            id: "7",
+            date: "2026-10-04T09:30:00.000Z",
+            from: "bob@example.com",
+            subject: "Hi",
+            unread: false,
+          },
+        ],
+        read: async () => undefined,
+      }),
+      calendarUrl: async () => undefined,
+      record: () => {},
+    });
+    if (!search || !read) {
+      throw new Error("the mail tools should include search and read");
+    }
+    const found = await search.execute("c1", { query: "x" });
+    const shown = (found.content[0] as { text: string }).text;
+    expect(found.details).toEqual({ ok: true, count: 1, text: shown });
+    const missing = await read.execute("c2", { id: "99" });
+    expect(missing.details).toMatchObject({
+      ok: false,
+      text: expect.stringContaining('No email with id "99"'),
+    });
+  });
+
   it("say how to reconnect when the provider refuses the login", async () => {
     const [search] = createMailTools({
       provider: gmail,

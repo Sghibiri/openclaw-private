@@ -21,6 +21,15 @@ function a2aResponse(text: string, extra: Record<string, unknown> = {}) {
   );
 }
 
+/**
+ * What a script in OpenClaw's code mode (`exec`) receives from a tool call:
+ * `details` when the tool returns them, with the text added only for errors
+ * (OpenClaw 2026.10 `projectToolResultValue`).
+ */
+function codeModeValue(result: { content: unknown; details?: unknown; isError?: boolean }) {
+  return "details" in result ? result.details : result;
+}
+
 describe("ask_private_agent tool", () => {
   it("sends a blocking A2A task and returns only the text answer", async () => {
     const fetchImpl = vi.fn(async () =>
@@ -45,6 +54,36 @@ describe("ask_private_agent tool", () => {
       { type: "text", text: "Two urgent emails: Rossi invoice, Bianchi contract." },
     ]);
     expect(JSON.stringify(result)).not.toContain(MARKER);
+  });
+
+  it("hands the answer to code-mode scripts too, which only receive details", async () => {
+    const tool = createAskPrivateAgentTool({
+      peers: [{ name: "inbox", url: "http://127.0.0.1:19789/a2a/v1" }],
+      fetchImpl: (async () =>
+        a2aResponse("Two urgent emails: Rossi invoice.")) as unknown as typeof fetch,
+    });
+    const result = await tool.execute("call-3", { agent: "inbox", question: "What is urgent?" });
+    expect(codeModeValue(result)).toEqual({
+      ok: true,
+      agent: "inbox",
+      state: "TASK_STATE_COMPLETED",
+      chars: 33,
+      answer: "Two urgent emails: Rossi invoice.",
+    });
+    expect(JSON.stringify(result)).not.toContain(MARKER);
+  });
+
+  it("tells code-mode scripts which agents exist when the name is wrong", async () => {
+    const tool = createAskPrivateAgentTool({
+      peers: [{ name: "inbox", url: "http://127.0.0.1:19789/a2a/v1" }],
+      fetchImpl: vi.fn() as unknown as typeof fetch,
+    });
+    const result = await tool.execute("call-4", { agent: "email", question: "hi" });
+    expect(codeModeValue(result)).toEqual({
+      ok: false,
+      reason: "unknown_peer",
+      message: 'Unknown private agent "email". Configured: inbox.',
+    });
   });
 
   it("refuses unknown peers without sending anything", async () => {

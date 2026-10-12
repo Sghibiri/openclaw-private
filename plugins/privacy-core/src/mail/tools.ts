@@ -72,8 +72,13 @@ function clamp(value: unknown, min: number, max: number, fallback: number): numb
   return Math.min(max, Math.max(min, number));
 }
 
+/**
+ * Code-mode scripts (`exec`) receive only `details`, so they carry the same
+ * text the model sees. These tools exist only on the private gateway, whose
+ * model is attested or local; the audit log still records counts only.
+ */
 function text(body: string, details: Record<string, unknown>) {
-  return { content: [{ type: "text" as const, text: body }], details };
+  return { content: [{ type: "text" as const, text: body }], details: { ...details, text: body } };
 }
 
 function failure(what: string, error: unknown) {

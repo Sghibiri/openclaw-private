@@ -68,21 +68,20 @@ export function createAskPrivateAgentTool(options: AskPrivateAgentToolOptions): 
       const agent = typeof params.agent === "string" ? params.agent.trim() : "";
       const question = typeof params.question === "string" ? params.question.trim() : "";
       const peer = peers.get(agent);
+      // Code-mode scripts (`exec`) receive only `details`, so every result
+      // repeats its text there: the answer, or what to fix.
       if (!peer) {
+        const message = `Unknown private agent "${agent}". Configured: ${peerNames.join(", ") || "none"}.`;
         return {
-          content: [
-            {
-              type: "text",
-              text: `Unknown private agent "${agent}". Configured: ${peerNames.join(", ") || "none"}.`,
-            },
-          ],
-          details: { ok: false, reason: "unknown_peer" },
+          content: [{ type: "text", text: message }],
+          details: { ok: false, reason: "unknown_peer", message },
         };
       }
       if (!question) {
+        const message = "Ask a question.";
         return {
-          content: [{ type: "text", text: "Ask a question." }],
-          details: { ok: false, reason: "empty_question" },
+          content: [{ type: "text", text: message }],
+          details: { ok: false, reason: "empty_question", message },
         };
       }
       const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -129,15 +128,16 @@ export function createAskPrivateAgentTool(options: AskPrivateAgentToolOptions): 
         const { state, text } = extractAnswer(parsed);
         const maxChars = options.maxAnswerChars ?? DEFAULT_MAX_ANSWER_CHARS;
         const answer = text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
+        if (!answer) {
+          const message = `The private agent "${peer.name}" gave no answer (task state ${state}).`;
+          return {
+            content: [{ type: "text", text: message }],
+            details: { ok: false, agent: peer.name, state, chars: 0, message },
+          };
+        }
         return {
-          content: [
-            {
-              type: "text",
-              text:
-                answer || `The private agent "${peer.name}" gave no answer (task state ${state}).`,
-            },
-          ],
-          details: { ok: Boolean(answer), agent: peer.name, state, chars: answer.length },
+          content: [{ type: "text", text: answer }],
+          details: { ok: true, agent: peer.name, state, chars: answer.length, answer },
         };
       } finally {
         await release();
