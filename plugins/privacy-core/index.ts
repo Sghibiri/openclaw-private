@@ -11,6 +11,8 @@
 // - Skill approval: runs are refused while a skill folder the gateway loads has a
 //   fingerprint the owner has not approved (always on in private mode).
 // - `openclaw privacy status | control | memory | skills`.
+// - The Privacy page: a read-only sidebar tab on both dashboards that says who
+//   reads email, on which model, and whether it is protected and verified.
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { resolveConfiguredSecretInputString } from "openclaw/plugin-sdk/secret-input-runtime";
 import { recordPrivacyAuditEvent, type PrivacyAuditEvent } from "../../shared/audit.js";
@@ -34,6 +36,7 @@ import { createEgressProxy, type EgressProxy } from "./src/egress-proxy.js";
 import { createMailReader } from "./src/mail/imap.js";
 import { createMailTools } from "./src/mail/tools.js";
 import { resolveActionPolicy } from "./src/policy.js";
+import { registerPrivacyPage } from "./src/privacy-page/route.js";
 import { createRequestHelpTool, REQUEST_HELP_TOOL_NAME } from "./src/request-help-tool.js";
 import { createRunGate } from "./src/run-gate.js";
 import { createSkillApprovalCheck } from "./src/skill-gate.js";
@@ -204,6 +207,8 @@ export default definePluginEntry({
         api.registerTool(createAskPrivateAgentTool({ peers }));
       }
     }
+
+    registerPrivacyPage(api, { mode: settings.mode, currentConfig });
 
     api.registerCli(
       async ({ program }) => {

@@ -32,6 +32,14 @@ export function capturePlugin(
     on: (name: string, handler: (...args: unknown[]) => unknown) => {
       hooks.push({ name, handler });
     },
+    // Recorded under the same name as the deprecated top-level registration.
+    session: {
+      controls: {
+        registerControlUiDescriptor: (...args: unknown[]) => {
+          (calls.registerControlUiDescriptor ??= []).push(args);
+        },
+      },
+    },
   };
   const api = new Proxy(base, {
     get(target, prop: string) {

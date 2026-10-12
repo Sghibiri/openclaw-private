@@ -7,6 +7,8 @@ import { resolvePrivacySettings } from "../../../shared/rules/settings.js";
 import {
   createSkillScanner,
   findUnapprovedSkills,
+  fingerprintSkillFiles,
+  hashSkillFile,
   parseSkillName,
   loadsPersonalSkills,
   skillRootsForAgent,
@@ -135,6 +137,42 @@ describe("skill discovery and fingerprints", () => {
       fingerprint: null,
       problem: "SKILL.md is not a regular file",
     });
+  });
+
+  it("fingerprints a deep acyclic linked folder chain below the directory budget", async () => {
+    const dir = path.join(root, "skills", "chain");
+    await writeSkill(dir, { "SKILL.md": "chain" });
+    const depth = 48;
+    for (let level = 0; level < depth; level += 1) {
+      const node = path.join(root, "nodes", `n${level}`);
+      await mkdir(node, { recursive: true });
+      if (level + 1 < depth) {
+        await symlink(path.join(root, "nodes", `n${level + 1}`), path.join(node, "next"));
+      } else {
+        await writeFile(path.join(node, "data.txt"), "data");
+      }
+    }
+    await symlink(path.join(root, "nodes", "n0"), path.join(dir, "linked"));
+    const scan = await createSkillScanner().scan([
+      { source: "workspace", dir: path.join(root, "skills") },
+    ]);
+    const dataRel = ["linked", ...Array.from({ length: depth - 1 }, () => "next"), "data.txt"].join(
+      "/",
+    );
+    expect(scan.problems).toEqual([]);
+    expect(scan.skills).toEqual([
+      {
+        name: "chain",
+        source: "workspace",
+        dir,
+        fingerprint: fingerprintSkillFiles("chain", [
+          hashSkillFile("SKILL.md", false, Buffer.from("chain")),
+          hashSkillFile(dataRel, false, Buffer.from("data")),
+        ]),
+        files: 2,
+        bytes: 9,
+      },
+    ]);
   });
 
   it("stops at a symlink maze inside a skill instead of walking it forever", async () => {

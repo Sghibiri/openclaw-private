@@ -107,11 +107,14 @@ openclaw --profile private privacy status
 
 Expect `tinfoil: verified` with a measurement under Attestations, one boundary crossing in the counters, and egress refusals for the gateway's own update and catalog calls. Those refusals are correct: the private gateway talks only to Tinfoil and the hosts you allowed.
 
+The same answers, in plain words, are on the dashboard: open **Privacy** in the sidebar (`openclaw dashboard`). It shows which model you talk to and which one reads your email, whether protection is on, which mailbox is connected, when Tinfoil's hardware was last verified, and the Inbox agent's recent activity (times and sizes, never content). Anything red names the command that fixes it.
+
 ## 5. Daily operations
 
 | Task                                    | Command                                                                                                           |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Is everything up                        | `openclaw gateway status` and `openclaw --profile private gateway status`                                         |
+| Who reads my email, is it protected     | **Privacy** in the dashboard sidebar                                                                              |
 | Privacy posture, attestations, refusals | `openclaw --profile private privacy status --since 7d`                                                            |
 | Dashboard                               | `openclaw dashboard`                                                                                              |
 | Logs                                    | `openclaw logs` (add `--profile private`)                                                                         |

@@ -1,6 +1,6 @@
 {
   "name": "openclaw-private-tinfoil",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "OpenClaw Private: Tinfoil provider that verifies the hardware enclave before every request",
   "license": "MIT",
   "type": "module",

@@ -116,9 +116,12 @@ export function expandCalendarFeed(
     }
   }
   const events: CalendarEvent[] = [];
+  // DATE values are calendar days, not instants in the host's local timezone.
+  const toMilliseconds = (time: ICAL.Time): number =>
+    time.isDate ? Date.UTC(time.year, time.month - 1, time.day) : time.toJSDate().getTime();
   const add = (start: ICAL.Time, end: ICAL.Time, item: ICAL.Event): boolean => {
-    const startMs = start.toJSDate().getTime();
-    const endMs = Math.max(end.toJSDate().getTime(), startMs);
+    const startMs = toMilliseconds(start);
+    const endMs = Math.max(toMilliseconds(end), startMs);
     if (endMs <= fromMs || startMs >= toMs) {
       return false;
     }
@@ -158,7 +161,7 @@ export function expandCalendarFeed(
     let inWindow = 0;
     while (inWindow < maxInWindow && Date.now() <= deadline) {
       const next = iterator.next();
-      if (!next || next.toJSDate().getTime() >= toMs) {
+      if (!next || toMilliseconds(next) >= toMs) {
         break;
       }
       const details = event.getOccurrenceDetails(next);

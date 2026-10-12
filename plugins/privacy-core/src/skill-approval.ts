@@ -284,8 +284,9 @@ export async function listSkillFiles(dir: string): Promise<SkillFile[] | { probl
       return `more than ${MAX_SKILL_DIRS} folders`;
     }
     const branch = new Set(ancestors).add(real);
-    for (const name of (await readdir(abs)).toSorted()) {
-      const childAbs = path.join(abs, name);
+    // Use the canonical parent for I/O so symlink ancestors do not accumulate; keep rel logical.
+    for (const name of (await readdir(real)).toSorted()) {
+      const childAbs = path.join(real, name);
       const childRel = rel ? `${rel}/${name}` : name;
       const info = await stat(childAbs);
       if (info.isDirectory()) {

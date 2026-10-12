@@ -1,6 +1,8 @@
 // The mail connector: read-only IMAP use, calendar expansion, tool output,
 // the privacy rules around it, and connect/disconnect on the private config.
+import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import type { PrivacyAuditEvent } from "../../../../shared/audit-types.js";
 import { MAIL_PROVIDERS, MAIL_TOOL_NAMES } from "../../../../shared/mail.js";
@@ -260,6 +262,74 @@ const FEED = [
 ].join("\r\n");
 
 describe("calendar", () => {
+  it.each(["Etc/GMT-12", "Etc/GMT+12"])(
+    "uses UTC all-day boundaries and recurrence cutoffs in %s",
+    async (timezone) => {
+      const feed = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        ...[
+          ["20261008", "20261009", "Ends at from"],
+          ["20261009", "20261010", "Starts at from"],
+          ["20261010", "20261011", "Starts at to"],
+        ].flatMap(([start, end, title]) => [
+          "BEGIN:VEVENT",
+          `UID:${start}`,
+          `DTSTART;VALUE=DATE:${start}`,
+          `DTEND;VALUE=DATE:${end}`,
+          `SUMMARY:${title}`,
+          "END:VEVENT",
+        ]),
+        "BEGIN:VEVENT",
+        "UID:daily",
+        "DTSTART;VALUE=DATE:20261008",
+        "DTEND;VALUE=DATE:20261009",
+        "RRULE:FREQ=DAILY;COUNT=3",
+        "SUMMARY:Daily",
+        "END:VEVENT",
+        "END:VCALENDAR",
+      ].join("\r\n");
+      // Isolate TZ from the test runner and exercise the real worker, not a mock.
+      const source = `
+        (async () => {
+          const { listCalendarEvents } = await import(${JSON.stringify(new URL("./calendar.ts", import.meta.url).href)});
+          const feed = ${JSON.stringify(feed)};
+          const events = [];
+          for (const to of ["2026-10-10T00:00:00Z", "2026-10-09T01:00:00Z"]) {
+            events.push(await listCalendarEvents(feed, new Date("2026-10-09T00:00:00Z"), new Date(to)));
+          }
+          process.stdout.write(JSON.stringify(events));
+        })().catch((error) => {
+          console.error(error);
+          process.exitCode = 1;
+        });
+      `;
+      const { stdout } = await promisify(execFile)(process.execPath, ["--eval", source], {
+        env: { ...process.env, TZ: timezone },
+        encoding: "utf8",
+        signal: AbortSignal.timeout(15_000),
+      });
+      const expected = [
+        {
+          start: "2026-10-09",
+          end: "2026-10-10",
+          allDay: true,
+          title: "Starts at from",
+          location: "",
+        },
+        {
+          start: "2026-10-09",
+          end: "2026-10-10",
+          allDay: true,
+          title: "Daily",
+          location: "",
+        },
+      ];
+      // The short window also includes the midnight recurrence in negative TZs.
+      expect(JSON.parse(stdout)).toEqual([expected, expected]);
+    },
+  );
+
   it("lists events in the window, expands repeats with their exceptions, drops cancelled ones", async () => {
     const events = await listCalendarEvents(
       FEED,
